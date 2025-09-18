@@ -1,5 +1,66 @@
 local public = {}
 
+function public.generateLocomotive()
+	-- Make a copy of the base game's locomotive, then make the needed changes for this mod
+	local fluid_locomotive = table.deepcopy(data.raw["locomotive"]["locomotive"])
+
+	fluid_locomotive.name = "Diesel-Locomotive-fluid-locomotive"
+	fluid_locomotive.minable.result = "Diesel-Locomotive-fluid-locomotive"
+
+	fluid_locomotive.energy_source = {
+		type = "burner",
+		fuel_categories = {
+			"Diesel-Locomotive-fluid"
+		},
+		effectivity = 1,
+		fuel_inventory_size = 1,
+		burnt_inventory_size = 1
+	}
+	fluid_locomotive.color = {r = 1, g = 0.73, b = 0.07, a = 0.5}
+	fluid_locomotive.connection_distance = 3+2/256
+	fluid_locomotive.joint_distance = 0.1
+	fluid_locomotive.collision_box = {{-0.6, -0.3}, {0.6, 0.3}}
+	fluid_locomotive.selection_box = {{-1, -1}, {1, 1}}
+	local layers = fluid_locomotive.pictures.rotated.layers
+	for i = 1, #layers do
+		-- layers[i].shift[2] = layers[i].shift[2] + 1.55
+	end
+	-- fluid_locomotive.vertical_selection_shift = -2.05
+
+	-- Add new locomotive to the game
+
+	-- TODO
+	local capacity = 1500
+
+	local internal_tank = util.table.deepcopy(data.raw["fluid-wagon"]["fluid-wagon"])
+
+	-- internal_tank.name = "internal-tank-" .. capacity
+	internal_tank.capacity = capacity
+
+	internal_tank.connection_distance = 0.1
+	internal_tank.joint_distance = 0.7-2/256
+	internal_tank.collision_box = {{-0.6, -0.7}, {0.6, 0.7}}
+	internal_tank.selection_box = {{-1, -1}, {1, 1}}
+	internal_tank.tank_count = 2
+	internal_tank.pictures = fluid_locomotive.pictures
+	fluid_locomotive.pictures = nil
+	internal_tank.wheels = nil
+
+
+	local spacer = util.table.deepcopy(data.raw["cargo-wagon"]["cargo-wagon"])
+
+	spacer.connection_distance = 3
+	spacer.joint_distance = 0.1
+	spacer.pictures = nil
+	spacer.collision_box = {{-0.6, -1}, {0.6, 1}}
+	spacer.selection_box = {{-1, -1}, {1, 1}}
+
+
+	data:extend({spacer})
+	data:extend({fluid_locomotive})
+	data:extend({internal_tank})
+end
+
 function public.generateTank(size)
     local proxy_tank = util.table.deepcopy(data.raw["pump"]["pump"])
 
@@ -7,7 +68,6 @@ function public.generateTank(size)
     log("proxy tank name ".. proxy_tank.name)
 	proxy_tank.icon = "__core__/graphics/empty.png"
 	proxy_tank.icon_size = 1
-	proxy_tank.icon_mipmaps = 0
 	proxy_tank.flags = {"placeable-neutral", "not-on-map"}
 	proxy_tank.collision_mask = {
 		layers = {}
@@ -18,7 +78,7 @@ function public.generateTank(size)
 	proxy_tank.max_health = nil
 	proxy_tank.corpse = "small-remnants"
 	proxy_tank.collision_box = {{-1.6, -1.6}, {1.6, 1.6}}
-	proxy_tank.selection_box = {{-1, -1}, {1, 1}}
+	proxy_tank.selection_box = {{-0.1, -0.1}, {0.1, 0.1}}
 	proxy_tank.energy_source = {type = "void"}
 	proxy_tank.resistances = {}
     proxy_tank.fluid_box.volume = size

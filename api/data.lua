@@ -1,7 +1,7 @@
 local public = {}
 
 function public.generateTank(size)
-    local proxy_tank = table.deepcopy(data.raw["pump"]["pump"])
+    local proxy_tank = util.table.deepcopy(data.raw["pump"]["pump"])
 
 	proxy_tank.name = "fluidTrains-proxy-tank-"..size
     log("proxy tank name ".. proxy_tank.name)
@@ -24,15 +24,15 @@ function public.generateTank(size)
     proxy_tank.fluid_box.volume = size
 	proxy_tank.fluid_box.pipe_covers = nil
 
-	proxy_tank.fluid_box.pipe_connections = {
-        {connection_type = "linked", linked_connection_id = 1, flow_direction = "input"},
-        {connection_type = "linked", linked_connection_id = 2, flow_direction = "input"},
-        {connection_type = "linked", linked_connection_id = 3, flow_direction = "input"},
-        {connection_type = "linked", linked_connection_id = 4, flow_direction = "input"},
-        {connection_type = "linked", linked_connection_id = 5, flow_direction = "input"},
-        {connection_type = "linked", linked_connection_id = 6, flow_direction = "input"},
-
-	}
+	proxy_tank.fluid_box.pipe_connections = {}
+	for i = 1, 12 do
+		-- Add one pipe connection for each possible pump position
+		proxy_tank.fluid_box.pipe_connections[i] = {
+			connection_type = "linked",
+			linked_connection_id = i,
+			flow_direction = "input"
+		}
+	end
     -- for _, input in pairs(proxy_tank.fluid_box.pipe_connections) do
     --     input.flow_direction = "input"
     -- end
@@ -111,18 +111,5 @@ function public.generateTank(size)
 	data:extend({proxy_tank})
 
 end
-
-local pump = data.raw["pump"]["pump"]
-
-table.insert(
-    pump.fluid_box.pipe_connections,
-    {
-        connection_type = "linked",
-        linked_connection_id = 1717,
-        flow_direction = "output"
-    }
-)
-
-data:extend({pump})
 
 return public

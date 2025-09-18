@@ -4,7 +4,21 @@ require("stdlib.util")
 local fuel = require("scripts.fuel")
 local locomotive = require("scripts.locomotive")
 
-local connection_array = {{1.5, 1.5}, {1.5, 0.5}, {1.5, -0.5}, {-1.5, 1.5}, {-1.5, 0.5}, {-1.5, -0.5}}
+-- Possible pump positions relative to the locomotive
+local connection_array = {
+	{1.5, 2.5},
+	{1.5, 1.5},
+	{1.5, 0.5},
+	{1.5, -0.5},
+	{1.5, -1.5},
+	{1.5, -2.5},
+	{-1.5, 2.5},
+	{-1.5, 1.5},
+	{-1.5, 0.5},
+	{-1.5, -0.5},
+	{-1.5, -1.5},
+	{-1.5, -2.5}
+}
 
 local public = {}
 
@@ -32,7 +46,7 @@ local function determineConnectivity(loco, exception, forcedFluidName)
     local uid = loco.unit_number
     local proxy = storage.proxies[uid]
 
-	for j = 1, 6 do
+	for j = 1, #connection_array do
 		local found_pumps = loco.surface.find_entities_filtered{
 			name = "pump",
 			position = moveposition(

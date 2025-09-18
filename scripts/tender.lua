@@ -67,11 +67,15 @@ local function supportsTenders(loco, tenderSettings)
 end
 
 function public.update(unit_number, loco, tenderSettings)
+	log("Updating tender uid " .. tostring(unit_number))
+	log("locomotive = " .. serpent.block(loco))
+	log("tenderSettings = " .. serpent.block(tenderSettings))
 	if not supportsTenders(loco, tenderSettings) then
 		return
 	end
 
 	local demand = locomotive.getFluidDemand(loco)
+	log("demand = " .. serpent.block(demand))
 	if not demand then
 		return
 	end

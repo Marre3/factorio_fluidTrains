@@ -160,6 +160,7 @@ end
 
 local function readSettings(sets)
 	sets.tender = settings.global["fluidTrains_enable_tender"].value
+	log("tender mode enabled: " .. sets.tender)
 	sets.mode = settings.global["fluidTrains_tender_mode"].value
 	sets.threshold = settings.global["fluidTrains_tender_threshold"].value
 end
@@ -177,10 +178,10 @@ local function ON_TICK(event)
 	for _,t in pairs(train_ridden()) do
 		update_train(t)
 	end
-
 	local tenders = storage.tender_queue[event.tick % TENDER_UPDATE_TICK + 1]
 	local tenderSettings = nil
 	for uid, loco in pairs(tenders) do
+		log("updating tenders uid " .. serpent.block(uid) .. " loco .. " .. serpent.block(loco))
 		if not loco.valid then
 			tenders[uid] = nil
 		else

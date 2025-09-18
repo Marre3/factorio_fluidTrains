@@ -57,15 +57,15 @@ local function update_loco(loco, exception)
 		local no_update_ticks = locomotive.update_loco_fuel(loco)
 		-- log("update ticks = " .. tostring(no_update_ticks))
 		if no_update_ticks == -1 then
-			log("creating proxy")
-			proxy.create_proxy(loco, exception)
+			-- log("creating proxy")
+			-- proxy.create_proxy(loco, exception)
 		elseif no_update_ticks <= IDLE_TICK_BUFFER then
 			prioritize(loco)
 		else
 			deprioritize(loco)
 		end
 	else
-		proxy.destroy_proxy(loco)
+		-- proxy.destroy_proxy(loco)
 	end
 end
 
@@ -130,6 +130,94 @@ local function ON_BUILT(event)
 				proxy.refresh_proxy(loco, nil)
 			end
 		end
+	end
+	if entity.name:find("fluid%-locomotive") then
+		log("built fluid train entity " .. entity.name)
+		log("position: " .. serpent.block(entity.position))
+		local surface = entity.surface
+		local x = entity.position.x
+		local y = entity.position.y
+		local name = entity.name
+		local orientation = entity.orientation
+		local direction = entity.direction
+		local e0 = entity
+		local x_offset, y_offset
+		if orientation == 0 then
+			x_offset = 0
+			y_offset = 2
+		elseif orientation == 0.75 then
+			x_offset = 2
+			y_offset = 0
+		elseif orientation == 0.5 then
+			x_offset = 0
+			y_offset = -2
+		elseif orientation == 0.25 then
+			x_offset = -2
+			y_offset = 0
+		else
+			entity.last_user.mine_entity(entity)
+			return
+		end
+		log("supports direction: "..tostring(entity.supports_direction))
+		log("direction: "..serpent.block(orientation))
+		log("x_offset: " .. tostring(x_offset))
+		log("y_offset: " .. tostring(y_offset))
+		local force = entity.force
+		-- entity.destroy()
+		-- local e0 = surface.	create_entity{
+		-- 	name = name,
+		-- 	position = {x, y},-- + 0.00390625},
+		-- 	direction = direction,
+		-- 	force = force,
+		-- 	-- player = entity.player,
+		-- 	move_stuck_players = true,
+		-- 	orientation = orientation,
+		-- 	snap_to_train_stop = false
+		-- }
+		log("e0 = " .. serpent.block(e0))
+		log(e0.position.y)
+		-- log(y + 0.00390625)
+		local e1 = surface.create_entity{
+			name = "fluid-wagon",
+			position = {x + x_offset, y + y_offset},-- + 1.953125},
+			direction = direction,
+			force = force,
+			-- player = entity.player,
+			move_stuck_players = true,
+			orientation = orientation,
+		}
+		if not e1 then
+			entity.destroy()
+		end
+		log("e0 = " .. serpent.block(e0))
+		log(e0.position.y)
+		log("e1 = " .. serpent.block(e1))
+		log(e1.position.y)
+		local e2 = surface.create_entity{
+			name = "cargo-wagon",
+			position = {x + 2 * x_offset, y + 2 * y_offset},--+ 1.953125 + 1.9453125},
+			direction = direction,
+			force = force,
+			-- player = entity.player,
+			move_stuck_players = true,
+			orientation = orientation,
+		}
+		if not e2 then
+			entity.destroy()
+			e1.destroy()
+		end
+		log("e0 = " .. serpent.block(e0))
+		log(e0.position.y)
+		log("e1 = " .. serpent.block(e1))
+		log(e1.position.y)
+		log("e2 = " .. serpent.block(e2))
+		log(e2.position.y)
+		e1.disconnect_rolling_stock(defines.rail_direction.back)
+		e2.disconnect_rolling_stock(defines.rail_direction.back)
+		e1.connect_rolling_stock(defines.rail_direction.back)
+		e2.connect_rolling_stock(defines.rail_direction.back)
+	else
+		log("built " .. entity.name)
 	end
 end
 
@@ -354,6 +442,7 @@ local function removeFluid(fuelCategory, fluidName)
 end
 
 local function dumpConfig()
+	log("dumping config")
 	game.forces.player.print("locomotives: ")
 	for k,v in pairs(storage.loco_sizes) do
 		game.forces.player.print(" - "..k..": "..v)

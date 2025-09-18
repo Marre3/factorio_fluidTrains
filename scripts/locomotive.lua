@@ -45,6 +45,9 @@ function public.update_loco_fuel(loco)
 	end
 end
 
+-- TODO
+
+-- @returns {name = name, amount = amount, minimum_temperature = temp}
 function public.getFluidDemand(loco)
 	if storage.proxies[loco.unit_number] then
 		-- return nil

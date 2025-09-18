@@ -13,33 +13,33 @@ local function findTenderWagon(loco_uid, train)
 			index = i
 		end
 	end
-	
+
 	local isFrontMover = false
-	
+
 	for _,l in pairs(train.locomotives["front_movers"]) do
 		if l.unit_number == loco_uid then
 			isFrontMover = true
 		end
 	end
-	
+
 	local seekDirection = isFrontMover and 1 or -1
 	local directional_locos = isFrontMover and train.locomotives["front_movers"] or train.locomotives["back_movers"]
-	
+
 	local blockMembers = {}
 	for _,l in pairs(directional_locos) do
 		blockMembers[l.unit_number] = true
 	end
-	
+
 	local pointer = index
-	
+
 	while true do
 		pointer = pointer + seekDirection
 		local candidate = train.carriages[pointer]
-		
+
 		if not candidate then
 			return nil
 		end
-		
+
 		if not blockMembers[candidate.unit_number] then
 			if candidate.prototype.type == "fluid-wagon" then
 				return {candidate}
@@ -51,10 +51,10 @@ local function findTenderWagon(loco_uid, train)
 end
 
 local function supportsTenders(loco, tenderSettings)
-	local options = global.loco_options[loco.prototype.name]
-	
+	local options = storage.loco_options[loco.prototype.name]
+
 	local defaultSettings = tenderSettings.tender
-	
+
 	if defaultSettings == "always" then
 		return true
 	elseif defaultSettings == "only-enabled" then
@@ -78,18 +78,18 @@ function public.update(unit_number, loco, tenderSettings)
 	if demand.amount < tenderSettings.threshold then
 		return
 	end
-		
+
 	local entities
 	if tenderSettings.mode == "local" then
 		entities = findTenderWagon(unit_number, loco.train)
 	else
 		entities = loco.train.fluid_wagons
 	end
-	
+
 	if not entities or #entities == 0 then
 		return
 	end
-	
+
 	local amount = 0
 	for _,entity in pairs(entities) do
 		local localAmount = entity.remove_fluid(demand)
@@ -99,19 +99,19 @@ function public.update(unit_number, loco, tenderSettings)
 			break
 		end
 	end
-	
+
 	if amount == 0 then
 		return
 	end
-	
+
 	local item = fuel.convertFluidToItem(
 		{name = demand.name, amount = amount, temperature = demand.minimum_temperature},
 		fuel.getBurnerFuelCategory(loco.prototype.burner_prototype))
-	
+
 	if not item then
 		return
 	end
-	
+
 	local count = loco.burner.inventory.insert(item)
 end
 

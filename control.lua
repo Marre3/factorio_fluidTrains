@@ -8,38 +8,38 @@ local tender = require("scripts.tender")
 
 local function prioritize(loco)
 --[[ Give locomotive priority so that it updates on every tick ]]
-	global.high_prio_loco[loco.unit_number] = loco
+	storage.high_prio_loco[loco.unit_number] = loco
 end
 
 local function deprioritize(loco)
 --[[ Remove locomotive priority ]]
-	global.high_prio_loco[loco.unit_number] = nil
+	storage.high_prio_loco[loco.unit_number] = nil
 end
 
 local function verifyInternalData()
-	for uid, loco in pairs(global.high_prio_loco) do
+	for uid, loco in pairs(storage.high_prio_loco) do
 		if not loco.valid then
-			global.high_prio_loco[uid] = nil
-			global.temperatures[uid] = nil
+			storage.high_prio_loco[uid] = nil
+			storage.temperatures[uid] = nil
 			proxy.forceKillProxy(uid)
 		end
 	end
-	
-	for _,slot in pairs(global.low_prio_loco) do
+
+	for _,slot in pairs(storage.low_prio_loco) do
 		for uid, loco in pairs(slot) do
 			if not loco.valid then
 				slot[uid] = nil
-				global.temperatures[uid] = nil
+				storage.temperatures[uid] = nil
 				proxy.forceKillProxy(uid)
 			end
 		end
 	end
-	
-	for _,slot in pairs(global.tender_queue) do
+
+	for _,slot in pairs(storage.tender_queue) do
 		for uid, loco in pairs(slot) do
 			if not loco.valid then
 				slot[uid] = nil
-				global.known_locos[uid] = nil
+				storage.known_locos[uid] = nil
 			end
 		end
 	end
@@ -55,7 +55,9 @@ local function update_loco(loco, exception)
 	end
 	if loco.train.speed == 0 then
 		local no_update_ticks = locomotive.update_loco_fuel(loco)
+		-- log("update ticks = " .. tostring(no_update_ticks))
 		if no_update_ticks == -1 then
+			log("creating proxy")
 			proxy.create_proxy(loco, exception)
 		elseif no_update_ticks <= IDLE_TICK_BUFFER then
 			prioritize(loco)
@@ -74,7 +76,7 @@ local function train_ridden()
 		if (
 			p.vehicle and
 			(
-				p.vehicle.type == "fluid-wagon" or 
+				p.vehicle.type == "fluid-wagon" or
 				p.vehicle.type == "cargo-wagon" or
 				p.vehicle.type == "locomotive" or
 				p.vehicle.type == "artillery-wagon"
@@ -89,13 +91,19 @@ end
 
 local function update_train(train)
 --[[ Update all locomotives in train ]]
+	-- log("updating train " .. serpent.block(train))
 	for _,l in pairs(train.locomotives.front_movers) do
-		if global.loco_tank_pair_list[l.name] then
+		-- log("checking locomotive " .. serpent.block(l))
+		if storage.loco_tank_pair_list[l.name] then
+
+			-- log("updating...")
 			update_loco(l, nil)
 		end
 	end
 	for _,l in pairs(train.locomotives.back_movers) do
-		if global.loco_tank_pair_list[l.name] then
+		-- log("checking locomotive " .. serpent.block(l))
+		if storage.loco_tank_pair_list[l.name] then
+			-- log("updating...")
 			update_loco(l, nil)
 		end
 	end
@@ -103,11 +111,11 @@ end
 
 local function ON_BUILT(event)
 --[[ Handler for when entity is built ]]
-	local entity = event.created_entity
-	if global.loco_tank_pair_list[entity.name] then
+	local entity = event.entity
+	if storage.loco_tank_pair_list[entity.name] then
 		update_loco(entity, nil)
-		global.tender_queue[entity.unit_number % TENDER_UPDATE_TICK+1][entity.unit_number] = entity
-		global.known_locos[entity.unit_number] = true
+		storage.tender_queue[entity.unit_number % TENDER_UPDATE_TICK+1][entity.unit_number] = entity
+		storage.known_locos[entity.unit_number] = true
 	end
 	if entity.name == "pump" then
 		local locos = entity.surface.find_entities_filtered{
@@ -118,7 +126,7 @@ local function ON_BUILT(event)
 			}
 		}
 		for _, loco in pairs(locos) do
-			if loco.valid and global.loco_tank_pair_list[loco.name] then
+			if loco.valid and storage.loco_tank_pair_list[loco.name] then
 				proxy.refresh_proxy(loco, nil)
 			end
 		end
@@ -127,29 +135,15 @@ end
 
 local function ON_DESTROYED(event)
 --[[ Handler for when entity is destroyed ]]
-	local entity = event.entity 
-	if global.loco_tank_pair_list[entity.name] then
+	local entity = event.entity
+	if storage.loco_tank_pair_list[entity.name] then
 		proxy.destroy_proxy(entity)
-		global.known_locos[entity.unit_number] = nil
-	end
-	if entity.name == "pump" then
-		local locos = entity.surface.find_entities_filtered{
-			type = "locomotive",
-			area = {
-				moveposition(entity.position, 0, {x = -1.5, y = -1.5}),
-				moveposition(entity.position, 0, {x = 1.5, y = 1.5})
-			}
-		}
-		for _, loco in pairs(locos) do
-			if loco.valid and global.loco_tank_pair_list[loco.name] then
-				proxy.refresh_proxy(loco, entity.unit_number)
-			end
-		end
+		storage.known_locos[entity.unit_number] = nil
 	end
 	if event.buffer then
 		local buffer = event.buffer
-		for name, count in pairs(buffer.get_contents()) do
-			if game.item_prototypes[name].group == "fluidTrains_fake" then
+		for _, item in pairs(buffer.get_contents()) do
+			if prototypes.item[item.name].group == "fluidTrains_fake" then
 				local amount = buffer.remove({name = name, count = buffer.get_item_count(name)})
 			end
 		end
@@ -158,7 +152,7 @@ end
 
 local function ON_PRE_PLAYER_MINED_ITEM(event)
 	local entity = event.entity
-	if global.loco_tank_pair_list[entity.name] then
+	if storage.loco_tank_pair_list[entity.name] then
 		proxy.destroy_proxy(entity)
 		entity.burner.inventory.clear()
 	end
@@ -168,23 +162,23 @@ local function readSettings(sets)
 	sets.tender = settings.global["fluidTrains_enable_tender"].value
 	sets.mode = settings.global["fluidTrains_tender_mode"].value
 	sets.threshold = settings.global["fluidTrains_tender_threshold"].value
-end	
+end
 
 local function ON_TICK(event)
 --[[ Handler for every tick ]]
 	if TICK_UPDATE then
-		for _, l in pairs(global.low_prio_loco[event.tick % SLOW_UPDATE_TICK + 1]) do
+		for _, l in pairs(storage.low_prio_loco[event.tick % SLOW_UPDATE_TICK + 1]) do
 			update_loco(l, nil)
 		end
-		for _, l in pairs(global.high_prio_loco) do
+		for _, l in pairs(storage.high_prio_loco) do
 			update_loco(l, nil)
 		end
 	end
 	for _,t in pairs(train_ridden()) do
 		update_train(t)
 	end
-	
-	local tenders = global.tender_queue[event.tick % TENDER_UPDATE_TICK + 1]
+
+	local tenders = storage.tender_queue[event.tick % TENDER_UPDATE_TICK + 1]
 	local tenderSettings = nil
 	for uid, loco in pairs(tenders) do
 		if not loco.valid then
@@ -213,6 +207,7 @@ local function ON_TRAIN_CHANGED_STATE(event)
 		(state == (train_state.wait_station)) or
 		(state == (train_state.manual_control))
 	)
+	log("train changed state, stopped?" .. tostring(stopped))
 	if not (state == train_state.wait_signal) then update_train(train) end
 	if not stopped then
 		for _,loco in pairs(train.locomotives.front_movers) do
@@ -228,20 +223,27 @@ local function ON_PLAYER_CURSOR_STACK_CHANGED(event)
 --[[ Handler for when cursor pick up or put down something ]]
 	local player = game.players[event.player_index]
 	local taken_item = player.cursor_stack
-	if taken_item and taken_item.valid_for_read and fuel.is_fake_item(taken_item) and player.opened and global.loco_tank_pair_list[player.opened.name] then
+	if
+		taken_item
+		and taken_item.valid_for_read
+		and fuel.is_fake_item(taken_item)
+		and player.opened
+		and storage.loco_tank_pair_list[player.opened.name]
+	then
 		local name = taken_item.name
 		local amount = taken_item.count
+		local quality = taken_item.quality
 		player.cursor_stack.clear()
 		local fake_items
-		for fake_name, fake_count in pairs (player.opened.burner.inventory.get_contents()) do
-			if fake_name == name then
-				fake_count = fake_count + amount
+		for _, item in pairs (player.opened.burner.inventory.get_contents()) do
+			if item.name == name then
+				item.count = item.count + amount
 			end
-			fake_items = {name = fake_name, count = fake_count}
+			fake_items = {name = item.name, count = item.count, quality = item.quality}
 		end
 		player.opened.burner.inventory.clear()
 		if not fake_items then
-			fake_items = {name = name, count = amount}
+			fake_items = {name = name, count = amount, quality = quality}
 		end
 		if fake_items then
 			player.opened.insert(fake_items)
@@ -254,10 +256,10 @@ local function ON_PLAYER_MAIN_INVENTORY_CHANGED(event)
 	local player = game.players[event.player_index]
 	local inventory = player.get_inventory(defines.inventory.character_main)
 	if not inventory then return end
-	for name, count in pairs(inventory.get_contents()) do
-		if game.item_prototypes[name].group == "fluidTrains_fake" then
+	for _, item in pairs(inventory.get_contents()) do
+		if prototypes.item[item.name].subgroup == "fluidTrains_fake" then
 			local amount = inventory.remove({name = name, count = inventory.get_item_count(name)})
-			if amount and amount > 0 and player.opened and global.loco_tank_pair_list[player.opened.name] then
+			if amount and amount > 0 and player.opened and storage.loco_tank_pair_list[player.opened.name] then
 				local fake_items
 				for fake_name, fake_count in pairs (player.opened.burner.inventory.get_contents()) do
 					if fake_name == name then
@@ -288,11 +290,11 @@ local function ON_PLAYER_ROTATED_ENTITY(event)
 			}
 		}
 		for _, loco in pairs(locos) do
-			if loco.valid and global.loco_tank_pair_list[loco.name] then
+			if loco.valid and storage.loco_tank_pair_list[loco.name] then
 				proxy.refresh_proxy(loco, nil)
 			end
 		end
-	elseif global.loco_tank_pair_list[entity.name] then
+	elseif storage.loco_tank_pair_list[entity.name] then
 		proxy.refresh_proxy(entity, nil)
 	end
 end
@@ -308,17 +310,17 @@ script.on_event({defines.events.on_player_main_inventory_changed}, ON_PLAYER_MAI
 
 local function addLocomotive(locoName, tankSize, options)
 	-- TODO: verify tank size
-	if (game.entity_prototypes["fluidTrains-proxy-tank-"..tankSize.."-0"]) then
-		global.loco_tank_pair_list[locoName] = "fluidTrains-proxy-tank-"..tankSize.."-"
-		global.loco_sizes[locoName] = tankSize
+	if (prototypes.entity["fluidTrains-proxy-tank-"..tankSize]) then
+		storage.loco_tank_pair_list[locoName] = "fluidTrains-proxy-tank-"..tankSize
+		storage.loco_sizes[locoName] = tankSize
 	else
 		error("unsupported tank size: "..tankSize)
 	end
-	
+
 	if options then
-		global.loco_options[locoName] = options
+		storage.loco_options[locoName] = options
 	end
-	
+
 end
 
 local function addFluid(fuelCategory, fluidName, itemConfigs)
@@ -329,21 +331,21 @@ local function addFluid(fuelCategory, fluidName, itemConfigs)
 		local multiplier = itemConfig["multiplier"] or 1
 		items[#items+1] = {itemName, minTemp, multiplier}
 	end
-	local categoryMap = global.fluid_map[fuelCategory] or {}
+	local categoryMap = storage.fluid_map[fuelCategory] or {}
 	categoryMap[fluidName] = items
-	global.fluid_map[fuelCategory] = categoryMap
+	storage.fluid_map[fuelCategory] = categoryMap
 	for _,item in pairs(items) do
-		global.item_fluid_map[item[1]] = {fluidName, item[3], item[2]}
+		storage.item_fluid_map[item[1]] = {fluidName, item[3], item[2]}
 	end
 end
 
 local function removeFluid(fuelCategory, fluidName)
-	local categoryMap = global.fluid_map[fuelCategory]
+	local categoryMap = storage.fluid_map[fuelCategory]
 	if categoryMap then
 		if categoryMap[fluidName] then
 			local items = categoryMap[fluidName]
 			for _,item in pairs(items) do
-				global.item_fluid_map[item[1]] = nil
+				storage.item_fluid_map[item[1]] = nil
 			end
 			categoryMap[fluidName] = nil
 		end
@@ -352,13 +354,13 @@ end
 
 local function dumpConfig()
 	game.forces.player.print("locomotives: ")
-	for k,v in pairs(global.loco_sizes) do
+	for k,v in pairs(storage.loco_sizes) do
 		game.forces.player.print(" - "..k..": "..v)
-		if global.loco_options[k] then
-			game.forces.player.print(serpent.block(global.loco_options[k]))
+		if storage.loco_options[k] then
+			game.forces.player.print(serpent.block(storage.loco_options[k]))
 		end
 	end
-	for category, entry in pairs(global.fluid_map) do
+	for category, entry in pairs(storage.fluid_map) do
 		game.forces.player.print("fluidCategory: "..category)
 		for fluid, items in pairs(entry) do
 			game.forces.player.print(" - fluid: "..fluid)
@@ -380,26 +382,26 @@ end
 
 local function ON_INIT()
 	global = global or {}
-	global.proxies = global.proxies or {}
-	global.update_tick = global.update_tick or {}
-	global.low_prio_loco = global.low_prio_loco or {}
+	storage.proxies = storage.proxies or {}
+	storage.update_tick = storage.update_tick or {}
+	storage.low_prio_loco = storage.low_prio_loco or {}
 	for i=1,SLOW_UPDATE_TICK do
-		global.low_prio_loco[i] = global.low_prio_loco[i] or {}
+		storage.low_prio_loco[i] = storage.low_prio_loco[i] or {}
 	end
-	global.tender_queue = global.tender_queue or {}
+	storage.tender_queue = storage.tender_queue or {}
 	for i=1,TENDER_UPDATE_TICK do
-		global.tender_queue[i] = global.tender_queue[i] or {}
+		storage.tender_queue[i] = storage.tender_queue[i] or {}
 	end
-	global.high_prio_loco = global.high_prio_loco or {}
-	global.generator = nil
-	global.loco_tank_pair_list = {}
-	global.fluid_map = {}
-	global.item_fluid_map = {}
-	global.temperatures = global.temperatures or {}
-	global.known_locos = global.known_locos or {}
-	global.loco_sizes = {}
-	global.loco_options = {}
-	
+	storage.high_prio_loco = storage.high_prio_loco or {}
+	storage.generator = nil
+	storage.loco_tank_pair_list = {}
+	storage.fluid_map = {}
+	storage.item_fluid_map = {}
+	storage.temperatures = storage.temperatures or {}
+	storage.known_locos = storage.known_locos or {}
+	storage.loco_sizes = {}
+	storage.loco_options = {}
+
 	verifyInternalData()
 end
 

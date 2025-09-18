@@ -9,44 +9,29 @@ local connection_array = {{1.5, 1.5}, {1.5, 0.5}, {1.5, -0.5}, {-1.5, 1.5}, {-1.
 local public = {}
 
 local function determineConnectivity(loco, exception, forcedFluidName)
-	local tank_type = 0
-	
 	local burner_inventory = loco.burner.inventory
 	if burner_inventory[1] and burner_inventory[1].valid_for_read then
 		if not fuel.is_fake_item(burner_inventory[1]) then
 			return 0
 		end
 	end
-	
-	local legalFluids = {}
-	local tankForced = false
-			
-	if forcedFluidName then
-		legalFluids[forcedFluidName] = true
-		tankForced = true
-	else
-		local burner_inventory = loco.burner.inventory
-		if burner_inventory[1] and burner_inventory[1].valid_for_read then
-			local fluid = fuel.reconstructFluid(loco.unit_number, burner_inventory[1])
-			if fluid.amount > 0 then
-				legalFluids[fluid.name] = true
-				tankForced = true
-			end
-		end
-	end
-	
-	if next(legalFluids) == nil then
-		for category, v in pairs(loco.prototype.burner_prototype.fuel_categories) do
-			if v then
-				for fluid, _ in pairs(global.fluid_map[category]) do
-					legalFluids[fluid] = true
-				end
-			end
-		end
-	end
+    if burner_inventory[1] and burner_inventory[1].valid_for_read then
+        fuel.reconstructFluid(loco.unit_number, burner_inventory[1])
+    end
 
-	local pumps = {}
-	
+	local legalFluids = {}
+    log("train proto " .. serpent.block(loco.prototype))
+    log("burner ".. serpent.block(loco.burner))
+    for category, _ in pairs(loco.prototype.burner_prototype.fuel_categories) do
+		log(category)
+        for fluid, _ in pairs(storage.fluid_map[category]) do
+            legalFluids[fluid] = true
+        end
+    end
+    log("legal fluids: " .. serpent.block(legalFluids))
+    local uid = loco.unit_number
+    local proxy = storage.proxies[uid]
+
 	for j = 1, 6 do
 		local found_pumps = loco.surface.find_entities_filtered{
 			name = "pump",
@@ -56,65 +41,66 @@ local function determineConnectivity(loco, exception, forcedFluidName)
 				{x = connection_array[j][1], y = connection_array[j][2]}
 			)
 		}
+        log("found ".. #found_pumps .. " pumps")
 		if found_pumps[1] and not(found_pumps[1].unit_number == exception) then
-			local pumpFluid = found_pumps[1].fluidbox[1]
-			local systemFluid = nil
-			if pumpFluid then
-				systemFluid = pumpFluid.name
-			end
-			if systemFluid then
-				if legalFluids[systemFluid] then
-					pumps[systemFluid] = (pumps[systemFluid] or 0) + 2^(j-1)
-				end
-			else
-				pumps[0] = (pumps[0] or 0) + 2^(j-1)
-			end
+            if proxy and proxy.tank then
+                proxy.tank.fluidbox.add_linked_connection(j, found_pumps[1], 1717)
+
+                local pumpFluid = found_pumps[1].fluidbox[1]
+                local filterFluid = found_pumps[1].fluidbox.get_filter(1)
+
+                log("pump fluid: " .. tostring(serpent.block(filterFluid)))
+                log("filter fluid: " .. tostring(serpent.block(filterFluid)))
+                if pumpFluid and legalFluids[pumpFluid.name] then
+					log("pump has legal fluid, filter set: "..pumpFluid.name)
+                    proxy.tank.fluidbox.set_filter(1, {name = pumpFluid.name})
+                elseif filterFluid and legalFluids[filterFluid.name] then
+					log("pump has legal filter, filter set: "..filterFluid.name)
+                    proxy.tank.fluidbox.set_filter(1, {name = filterFluid.name})
+                else
+                    -- Set the proxy tank filter to some legal fluid
+                    -- to prevent illegal fluid entering the proxy tank
+					local fluid = nil
+					for k, v in pairs(legalFluids) do
+						if v then
+							fluid = k
+						end
+					end
+					log("pump does not have legal fluid, setting: "..fluid)
+                    proxy.tank.fluidbox.set_filter(1, {name = fluid})
+                end
+				log("tank filter:" .. serpent.block(proxy.tank.fluidbox.get_filter(1)))
+            end
 		end
 	end
-	
-	for fluid,_ in pairs(legalFluids) do
-		local configuration = pumps[fluid]
-		if configuration then
-			tank_type = configuration
-			break
-		end
-	end
-	
-	if tank_type > 0 or tankForced then
-		tank_type = tank_type + (pumps[0] or 0)
-	end
-	
-	return tank_type
 end
 
 function public.create_proxy(loco, exception)
---[[ Create proxy_tank for a locomotive and inserting the proxy_tank to global.proxies 
+--[[ Create proxy_tank for a locomotive and inserting the proxy_tank to storage.proxies
 	if proxy_tank successfully created return 0, else return -1 ]]
 	local uid = loco.unit_number
-	
-	if not global.known_locos[uid] then
-		global.known_locos[uid] = true
-		global.tender_queue[uid % TENDER_UPDATE_TICK+1][uid] = loco
+    log("creating proxy for loco uid " .. uid)
+
+	if not storage.known_locos[uid] then
+		storage.known_locos[uid] = true
+		storage.tender_queue[uid % TENDER_UPDATE_TICK+1][uid] = loco
 	end
-	
-	local proxy = global.proxies[uid]
+
+	local proxy = storage.proxies[uid]
 	if not(proxy and proxy.tank and proxy.tank.valid) and math.floor(4 * loco.orientation) == 4 * loco.orientation then
 		local proxy_tank
 		local fluid_amount
-		local tank_type = determineConnectivity(loco, exception)
+		determineConnectivity(loco, exception)
 		proxy_tank = loco.surface.create_entity{
-			name = global.loco_tank_pair_list[loco.name]..tank_type,
+			name = storage.loco_tank_pair_list[loco.name],
 			position = moveposition(loco.position, ori_to_dir(loco.orientation), {x = 0, y = 0}),
 			force = loco.force,
 			direction = ori_to_dir(loco.orientation)
 		}
-		if (not proxy_tank) then return -1 end
-		if tank_type > 0 then
-			local locked = proxy_tank.fluidbox.get_locked_fluid(1)
-			if locked then
-				proxy_tank.fluidbox.set_filter(1, { name = locked})
-			end
-		end
+		if (not proxy_tank) then
+            log("could not create proxy uid " .. uid)
+            return -1
+        end
 		proxy_tank.destructible = false
 		local burner_inventory = loco.burner.inventory
 		fluid_amount = 0
@@ -125,13 +111,16 @@ function public.create_proxy(loco, exception)
 				proxy_tank.fluidbox[1] = fluid
 			end
 		end
-		global.proxies[uid] = {tank = proxy_tank, last_amount = fluid_amount, tick = game.tick}
+		storage.proxies[uid] = {tank = proxy_tank, last_amount = fluid_amount, tick = game.tick}
 		local update_tick = uid % SLOW_UPDATE_TICK + 1
-		global.update_tick[uid] = update_tick
-		global.low_prio_loco[update_tick][uid] = loco
-		global.high_prio_loco[uid] = loco
+		storage.update_tick[uid] = update_tick
+		storage.low_prio_loco[update_tick][uid] = loco
+		storage.high_prio_loco[uid] = loco
+        determineConnectivity(loco, exception)
+		log("created proxy uid:" .. uid .. " position " .. serpent.block(proxy_tank.position) .. " direction " .. proxy_tank.direction)
 		return 0
 	end
+    log("did not create proxy uid" .. uid)
 	return -1
 end
 
@@ -142,26 +131,26 @@ function public.destroy_proxy(loco)
 	local uid = loco.unit_number
 	local no_update_ticks = locomotive.update_loco_fuel(loco)
 	if no_update_ticks >= 0 then
-		global.proxies[uid].tank.destroy()
-		global.low_prio_loco[global.update_tick[uid]][uid] = nil
+		storage.proxies[uid].tank.destroy()
+		storage.low_prio_loco[storage.update_tick[uid]][uid] = nil
 	end
-	global.proxies[uid] = nil
-	global.update_tick[uid] = nil
-	global.high_prio_loco[uid] = nil
+	storage.proxies[uid] = nil
+	storage.update_tick[uid] = nil
+	storage.high_prio_loco[uid] = nil
+    log("destroyed proxy " .. uid)
 	return no_update_ticks
 end
 
 function public.refresh_proxy(loco, exception)
-	local proxy = global.proxies[loco.unit_number]
+	local proxy = storage.proxies[loco.unit_number]
 	if proxy and proxy.tank and proxy.tank.valid then
-		local fluid_name = proxy.tank.fluidbox and proxy.tank.fluidbox[1] and proxy.tank.fluidbox[1].name
-		local tank_type = determineConnectivity(loco, exception, fluid_name)
-		if not (proxy.tank.name == global.loco_tank_pair_list[loco.name]..tank_type) then
+		determineConnectivity(loco, exception)
+		if not (proxy.tank.name == storage.loco_tank_pair_list[loco.name]) then
 			local fluid_amount = proxy.tank.fluidbox and proxy.tank.fluidbox[1] and proxy.tank.fluidbox[1].amount
 			local fluid_temp   = proxy.tank.fluidbox and proxy.tank.fluidbox[1] and proxy.tank.fluidbox[1].temperature
 			proxy.tank.destroy()
 			proxy.tank = loco.surface.create_entity{
-				name = global.loco_tank_pair_list[loco.name]..tank_type,
+				name = storage.loco_tank_pair_list[loco.name],--..tank_type,
 				position = moveposition(loco.position, ori_to_dir(loco.orientation), {x = 0, y = 0}),
 				force = loco.force,
 				direction = ori_to_dir(loco.orientation)
@@ -183,11 +172,11 @@ function public.refresh_proxy(loco, exception)
 end
 
 function public.forceKillProxy(uid)
-	local proxy = global.proxies[uid]
+	local proxy = storage.proxies[uid]
 	if proxy and proxy.tank and proxy.tank.valid then
 		proxy.tank.destroy()
 	end
-	global.proxies[uid] = nil
+	storage.proxies[uid] = nil
 end
 
 return public
